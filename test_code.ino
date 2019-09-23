@@ -1,10 +1,11 @@
 #include "OneButton.h"
 #include <avr/sleep.h> 							// Sleep Modes
 #include <avr/power.h> 							// Power management
+#include <avr/wdt.h>							// Watchdog Timer
 
-#define mid 4000
-#define low 3200
-#define crit 2600
+#define mid 4000								// BAttery Level Mid
+#define low 3200								// Battery Level low, flash and start dimming the Led
+#define crit 2600								// Battery Level critical, shut down
 
 
 const byte LEDr = 1; 							// pin 1
@@ -50,13 +51,13 @@ void loop()
 		Vcc = readVcc();						//read Battery voltage
 		if(Vcc < low && count != 1){
 			i = 0;
-				while (i++<3) {					//flash 3 times the red LED befor dimm the withe LED
+				while (i++<3) {					//flash 3 times the red LED befor dimm the white LED
 					analogWrite(LEDr, PWMr);
 					_delay_ms(500);
 					digitalWrite(LEDr, LOW);
 					_delay_ms(250);
 				}			
-			PWMw_h = PWMw_h / 2					//halve the PWM output of the white LED
+			PWMw_h = PWMw_h / 2;				//halve the PWM output of the white LED
 			if(PWMw_h <= PWMw_l){				//change Mode to low when PWM output is smaler then low PWM
 				count = 2;
 			}
@@ -65,37 +66,38 @@ void loop()
 			}
 		}
 		if(Vcc < low && count == 1){
-			digitalWrite(LEDr, LOW);
-			_delay_ms(50);
-			analogWrite(LEDr, PWMr);
-			if(Vcc <= crit){
-				i = 0;
-				while (i++<3) {
-					digitalWrite(LEDr, LOW);
-					_delay_ms(250);
-					analogWrite(LEDr, PWMr);
-					_delay_ms(500);
+			i = 0;
+			while (i++<3) {
+				digitalWrite(LEDr, LOW);
+				_delay_ms(250);
+				analogWrite(LEDr, PWMr);
+				_delay_ms(500);
 				}
+			PWMr = PWMr / 2;
+			if(Vcc <= crit){
+				sleep();	
 			}
 		}
 		ADC_off();								//save power	
 		WDT_on;									//start watchdog again
-	
-    switch (count) {
-    case 1:										//Mode red LED 
-        analogWrite(LEDr, PWMr);
-        digitalWrite(LEDw, LOW);
-        break;
-    case 2:										//low Mode white LED
-        digitalWrite(LEDr, LOW);
-        analogWrite(LEDw, PWMw_l);
-        break;
-    case 3:										//high Mode white LED
-        digitalWrite(LEDr, LOW);
-        analogWrite(LEDw, PWMw_h);
-        break;
-    }
+		WDR_flag = false;						//reset WDT Flag
+	}
+	switch (count) {
+		case 1:									//Mode red LED 
+		analogWrite(LEDr, PWMr);
+		digitalWrite(LEDw, LOW);
+		break;
+	case 2:										//low Mode white LED
+		digitalWrite(LEDr, LOW);
+		analogWrite(LEDw, PWMw_l);
+		break;
+	case 3:										//high Mode white LED
+		digitalWrite(LEDr, LOW);
+		analogWrite(LEDw, PWMw_h);
+		break;
+	}
 }
+
 
 
 void sleep()									// This function will be called when the button1 was pressed 1 time
@@ -122,7 +124,7 @@ void sleep()									// This function will be called when the button1 was presse
     flag = 1;									//set flag, uc was in sleepmode before
 } 
 
-void changeMode()							// This function will be called once, during pressed for a long time.
+void changeMode()								// This function will be called once, during pressed for a long time.
 {
     if (flag == 1) {
         flag = 0;
@@ -140,11 +142,11 @@ void changeMode()							// This function will be called once, during pressed for
 void WDT_on() {
 	// Setup watchdog timer to only interrupt, not reset
 	cli();										// Disable interrupts
-	wdt_reset(); 								// Reset Watchdog Timer
-	MCUSR &= ~(1 << WDRF); 						//Rücksetzen des Watchdog System Reset Flag
-	WDTCSR = (1 << WDCE) | (1 << WDE); 			//Watchdog Change Enable
-	WDTCSR = (1 << WDP3) | (1<<WDP0); 			//Watchdog Zyklus = 8 s
-	WDTCSR |= (1 << WDIE); 						//Watchdog Interrupt enable
+	wdt_reset(); 								// Reset the WDT
+	MCUSR &= ~(1 << WDRF); 						// Clear Watchdog reset flag
+	WDTCR = (1 << WDCE) | (1 << WDE); 			// Start timed sequence
+	WDTCR = (1 << WDP3) | (1<<WDP0); 			// Watchdog cycle = 8 s
+	WDTCR |= (1 << WDIE); 						// Watchdog Interrupt enable
  	sei();										// Enable interrupts
 }
 
@@ -171,14 +173,14 @@ long readVcc() {
 
   ADMUX = _BV(MUX3) | _BV(MUX2);
 	
-  delay(2); 									// Wait for Vref to settle
+  _delay_ms(20); 									// Wait for Vref to settle
   ADCSRA |= _BV(ADSC); 							// Start conversion
   while (bit_is_set(ADCSRA,ADSC)); 				// measuring
  
-  uint8_t low  = ADCL; 							// must read ADCL first - it then locks ADCH  
-  uint8_t high = ADCH; 							// unlocks both
+  uint8_t low_adc  = ADCL; 							// must read ADCL first - it then locks ADCH  
+  uint8_t high_adc = ADCH; 							// unlocks both
  
-  long result = (high<<8) | low;
+  long result = (high_adc<<8) | low_adc;
  
   result = 1126400L / result; 					// Calculate Vcc (in mV); 1126400 = 1.1*1024*1000
   return result; 								// Vcc in millivolts
