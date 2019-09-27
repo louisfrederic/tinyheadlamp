@@ -7,4 +7,6 @@ I made a smal PCB with the same outline as the original but placed a attiny85 an
 
 As LED there ar two Cree LED XP-G, a white one with 172 lm @350mA and a red one with, X lm @350mA.
 
-The PCB is in production right now and I hope that I did not screw it up... 
+The PCB is in production right now and I hope that I did not screw it up...
+![alt text](https://raw.githubusercontent.com/louisfrederic/tinyheadlamp/PCB/Front.png)
+![alt text](https://raw.githubusercontent.com/louisfrederic/tinyheadlamp/PCB/Back.png)
