@@ -1,19 +1,19 @@
-#include "OneButton.h"
-#include <avr/sleep.h>               // Sleep Modes
+#include "OneButton.h"				//Button Library
+#include <avr/sleep.h>              // Sleep Modes
 #include <avr/power.h>              // Power management
-#include <avr/wdt.h>              // Watchdog Timer
-#include <util/delay.h>
+#include <avr/wdt.h>              	// Watchdog Timer
+//#include <util/delay.h>
 
-#define mid 4000                // BAttery Level Mid
-#define low 3200                // Battery Level low, flash and start dimming the Led
-#define crit 2600               // Battery Level critical, shut down
+#define mid 4000                	// Battery Level Mid
+#define low 3200                	// Battery Level low, flash and start dimming the Led
+#define crit 2600               	// Battery Level critical, shut down
 
 
-const byte LEDr = 1;              // pin 1
-const byte LEDw = 4;              // pin 4
-const byte ModeNr = 3;
-volatile bool WDR_flag = false;
-bool PWR_flag = false;
+const byte LEDr = 1;              	// pin 1
+const byte LEDw = 4;              	// pin 4
+const byte ModeNr = 3;				// number of modis; change the number cases in the switch statement
+volatile bool WDR_flag = false;		// flag inside the ISR(WDT_vec) 
+bool PWR_flag = false;				// flag gets set when voltage drops bellow
 
 OneButton button1(2, true);
 int count = 1;
@@ -47,16 +47,15 @@ void setup()
 void loop()
 {
   uint8_t i = 0;
-    button1.tick();               // keep watching the push buttons:
-  if(WDR_flag == true){           // do every 8s 
-    WDR_flag = false;           //reset WDT Flag
+    button1.tick();               					// keep watching the push buttons:
+  if(WDR_flag == true){           					// do every 8s 
+    WDR_flag = false;           					//reset WDT Flag
     ADC_on();
-    Vcc = readVcc();            //read Battery voltage
+    Vcc = readVcc();            					//read Battery voltage
     if(Vcc < low && count == 3){
-      if(PWMw_h <= PWMw_l){       //change Mode to low when PWM output is smaler then low PWM
+      if(PWMw_h <= PWMw_l){       					//change Mode to low when PWM output is smaler then low PWM
         count = 2;
-      }else
-    {
+      }else{
     i = 0;
         while (i++<3 && PWR_flag == false) {         //flash 3 times the red LED befor dimm the white LED
           analogWrite(LEDr, PWMr);
@@ -65,16 +64,13 @@ void loop()
           _delay_ms(250);
       PWR_flag = true;
         }     
-      PWMw_h = PWMw_h / 2;        //halve the PWM output of the white LED
+      PWMw_h = PWMw_h - 10;        					//halve the PWM output of the white LED
       }
-      if(Vcc <= crit){          //go to sleep when Battery is empty
-        PWMw_l = 10;
-        PWMr = 10;
-        ADC_off();
-        WDT_off();
-        }
+	  if(Vcc <= crit){
+        batsave();  
+      }
     }
-    if(Vcc < low && count == 1){
+    if(Vcc < low && count == 1){					
       i = 0;
       while (i++<3) {
         digitalWrite(LEDr, LOW);
@@ -82,9 +78,9 @@ void loop()
         analogWrite(LEDr, PWMr);
         _delay_ms(500);
         }
-      PWMr = PWMr / 2;
+      PWMr = PWMr - 10;
       if(Vcc <= crit){
-        sleep();  
+        batsave();  
       }
     }
     ADC_off();                //save power  
@@ -107,8 +103,8 @@ void loop()
 
 
 
-void sleep()                  // This function will be called when the button1 was pressed 1 time
-{
+void sleep(){                  // This function will be called when the button1 was pressed 1 time
+
     digitalWrite(LEDr, LOW);
     digitalWrite(LEDw, LOW);
     //prepare sleep
@@ -130,8 +126,8 @@ void sleep()                  // This function will be called when the button1 w
     flag = 1;                 //set flag, uc was in sleepmode before
 } 
 
-void changeMode()               // This function will be called once, during pressed for a long time.
-{
+void changeMode(){               // This function will be called once, during pressed for a long time.
+
     if (flag == 1) {
         flag = 0;
     }
@@ -145,8 +141,13 @@ void changeMode()               // This function will be called once, during pre
     }
 }
 
+void batsave(){
+	PWMw_l = 10;
+    PWMr = 10;
+    WDT_off();
+}
 
-void WDT_on() {
+void WDT_on(){
   cli();                    // Disable interrupts
   wdt_reset();                // Reset the WDT
   WDTCR = (1 << WDIE) | (1 << WDP3) | (1<<WDP0);      // Watchdog cycle = 8 s
@@ -160,15 +161,15 @@ void WDT_off(){
   sei();                    // Enable interrupts
 }
 
-void ADC_on() {
+void ADC_on(){
   ADCSRA = (1 << ADEN );            // ADC power on
 }
 
-void ADC_off() {
+void ADC_off(){
   ADCSRA &= ~(1<<7);              //ADC off
 }
 
-long readVcc() {
+long readVcc(){
   // Read 1.1V reference against AVcc
   // set the reference to Vcc and the measurement to the internal 1.1V reference
    
