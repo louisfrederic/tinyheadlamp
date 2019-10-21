@@ -1,31 +1,28 @@
-#include "OneButton.h"        //Button Library
-#include <avr/sleep.h>              // Sleep Modes
-#include <avr/power.h>              // Power management
-#include <avr/wdt.h>                // Watchdog Timer
+#include "OneButton.h"                          //Button Library
+#include <avr/sleep.h>                          // Sleep Modes
+#include <avr/power.h>                          // Power management
+#include <avr/wdt.h>                            // Watchdog Timer
 #include <util/delay.h>
 
-#define mid 4000                  // Battery Level Mid
-#define low 3200                  // Battery Level low, flash and start dimming the Led
-#define crit 2600                 // Battery Level critical, shut down
+#define low 3200
+#define crit 2600                               // Battery Level critical, shut down
 
-
-const byte LEDr = 1;                // pin 1
-const byte LEDw = 4;                // pin 4
-const byte ModeNr = 4;        // number of modis; change the number cases in the switch statement
-volatile bool WDR_flag = false;   // flag inside the ISR(WDT_vec) 
-//bool PWR_flag = false;        // flag gets set when voltage drops bellow
-bool stop_flag = false;
+int mode = 0;
+int const modenum = 4;
+int LED[2] = {1,4};
+int LEDpwm[modenum] = {10,20,50,100};
+int x = 0;
+int y = 0;
+int volatile newPWM;
+long Vcc;
+// Flags
+bool flag = false;
+bool volatile stop_flag = true;
+bool volatile WDR_flag = false;
+bool low_flag = false;
+bool block_flag = false;
 
 OneButton button1(2, true);
-int count = 1;
-int flag = 0;
-long Vcc;
-int PWMr = 50;
-int PWMw_l = 10;
-int PWMw_m = 125;
-int PWMw_h = 255;
-int *ptr = (int *) 0x1100;
-int *pwm_n = (int *) 0x1110;
 
 ISR(PCINT0_vect)
 {
@@ -35,138 +32,132 @@ ISR(WDT_vect){
   WDR_flag=true;
 }
 
-void setup()
-{
-    pinMode(LEDr, OUTPUT);            // turn the LED on (HIGH is the voltage level)
-    pinMode(LEDw, OUTPUT);
-    digitalWrite(LEDr, HIGH);           // turn the LED on (HIGH is the voltage level)
-    digitalWrite(LEDw, HIGH);
-    delay(1000);
-    button1.attachClick(sleep);
-    button1.attachLongPressStart(changeMode);
-    button1.attachDoubleClick(settings);
-    WDT_on();
+void setup(){
+for (int i = 0; i <= 1; i++){
+  pinMode(LED[i],OUTPUT); 
+  digitalWrite(LED[i], HIGH);
+}
+delay(1000);
+button1.attachClick(sleep);      
+//button1.attachClick(stop_dim);
+button1.attachLongPressStart(changeMode);
+button1.attachDoubleClick(settings);
+    
+//WDT_on();
 }
 
-void loop()
-{
- uint8_t i = 0;
- button1.tick();                         // keep watching the push buttons:
-  if(WDR_flag == true){                     // do every 8s 
-    WDR_flag = false;                     //reset WDT Flag
+void loop(){
+uint8_t i = 0;
+button1.tick();                                   // keep watching the push buttons:
+if(WDR_flag == true){                             // do every 8s 
+    WDR_flag = false;                             //reset WDT Flag
     ADC_on();
-    Vcc = readVcc();                      //read Battery voltage
-    if(Vcc < crit ){
-      i = 0;
-      while (i++<5) {         //flash 3 times the red LED befor dimm the white LED
-        analogWrite(LEDr, PWMr);
+    Vcc = readVcc();                              //read Battery voltage
+    ADC_off();
+    if(Vcc <= low && low_flag == false){
+      while (i++<5) {                             //flash 5 times the red LED
+        analogWrite(LED[0], 255);
         _delay_ms(500);
-        digitalWrite(LEDr, LOW);
+        digitalWrite(LED[0], LOW);
+        _delay_ms(250);
+        }
+      low_flag = true;       
+    }
+    if(Vcc <= crit ){
+      i = 0;
+      while (i++<5) {                             //flash 5 times the red LED befor dimm the white LED
+        analogWrite(LED[0], 255);
+        _delay_ms(500);
+        digitalWrite(LED[0], LOW);
         _delay_ms(250);
         }     
-      batsave();               //halve the PWM output of the white LED
-      }
+    batsave();                                    //put PWM output of every LED to 10% duty cycle
     }
-    ADC_off();                //save power  
-  
-  switch (count) {
-    case 1:                 //Mode red LED 
-      *ptr = PWMr;
-      analogWrite(LEDr, PWMr);
-      digitalWrite(LEDw, LOW); //edit by Kev
-    break;
-    case 2:                   //low Mode white LED
-      *ptr = PWMw_l;
-      digitalWrite(LEDr, LOW); //edit by Kev
-      analogWrite(LEDw, PWMw_l);
-    break;
-    case 3:                   //mid Mode white LED
-      *ptr = PWMw_m;
-      digitalWrite(LEDr, LOW); //edit by Kev
-      analogWrite(LEDw, PWMw_m);
-    break;
-    case 4:                   //high Mode white LED
-      *ptr = PWMw_h;
-      digitalWrite(LEDr, LOW); //edit by Kev
-      analogWrite(LEDw, PWMw_h);
-    break;
-  }
+}
+ADC_off();
+
+
+if(mode == 0){                                    //check witch mode, mode 1 = red LED; mode 2-4 = white LED;
+  x = 0;                                          //red LED
+  y = 1;
+}else{
+  x = 1;                                          //white LED
+  y = 0;
+}
+fade();
+analogWrite(LED[x], LEDpwm[mode]);                //light the LED with the duty cycle from the array
+digitalWrite(LED[y], LOW);
 }
 
+void sleep(){                                     // This function will be called when the button1 was pressed 1 time
 
-
-void sleep(){                  // This function will be called when the button1 was pressed 1 time
-
-    digitalWrite(LEDr, LOW);
-    digitalWrite(LEDw, LOW);
+    for (int i = 0; i <= 1; i++){
+        digitalWrite(LED[i], LOW);
+    }
     //prepare sleep
     WDT_off();
-    GIFR |= bit(PCIF);              // clear any outstanding interrupts
-    GIMSK |= _BV(PCIE);             // Enable Pin Change Interrupts
-    PCMSK |= _BV(PCINT2);             // Use PB2 as interrupt pin
+    GIFR |= bit(PCIF);                            // clear any outstanding interrupts
+    GIMSK |= _BV(PCIE);                           // Enable Pin Change Interrupts
+    PCMSK |= _BV(PCINT2);                         // Use PB2 as interrupt pin
     ADC_off();
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);    // replaces above statement
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);          // set sleepmode
 
-    sleep_enable();               // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
-    sei();                    // Enable interrupts
-    sleep_cpu();                // sleep
+    sleep_enable();                               // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
+    sei();                                        // Enable interrupts for wakeup
+    sleep_cpu();                                  // sleep
 
-    cli();                    // Disable interrupts
-    PCMSK &= ~_BV(PCINT2);            // Turn off PB2 as interrupt pin
-    sleep_disable();              // Clear SE bit
-    WDT_on();
-    flag = 1;                 //set flag, uc was in sleepmode before
+    cli();                                        // Disable interrupts
+    PCMSK &= ~_BV(PCINT2);                        // Turn off PB2 as interrupt pin
+    sleep_disable();                              // Clear SE bit
+    WDT_on();                                     // turn the watchdog on
+    flag = 1;                                     //set flag, µc was in sleepmode before
 } 
 
-void changeMode(){               // This function will be called once, during pressed for a long time.
-
-    if (flag == 1) {
-        flag = 0;
+inline void changeMode(){                         // This function will be called once, during pressed for a long time.
+ 
+    if (flag == true) {                           // when true lamp was in sleepmode befor, don't change mode because you are waking up rigth now
+        flag = false;                             // resetset flag
     }
-    else {
-        if (count < ModeNr) {
-            count++;
+    //else if(block_flag == false){                 // check for regular mode change
+      else{
+        if (mode < modenum - 1) {
+            mode++;                               // change mode
         }
         else {
-            count = 1;
+            mode = 0;
         }
     }
 }
 
-inline void settings(){
-  button1.attachDoubleClick(stop_dim);
-       int fadeAmount = 5;
-       while(stop_flag == false){
-        if(
-       analogWrite(LEDr, PWMr);
-       PWMr = PWMr + fadeAmount;
-       if (PWMr <= 0 || PWMr >= 255) {
-          fadeAmount = -fadeAmount;
-       }
-       delay(50);
+inline void settings(){                           // set the brightness
+   if(stop_flag == false){
+      LEDpwm[mode] = newPWM;
+      stop_flag = true;
+   }else{
+    stop_flag = false;
+   }
 }
-  }
 
-
-
-inline void stop_dim(){
-  stop_flag = true;
-  button1.attachDoubleClick(settings);
-  if(count == 1){
-      PWMr = pwm_n;
-    }else if(count == 2){
-      PWMw_l = pwm_n;
-    }else if(count == 3){
-      PWMw_m = pwm_n;
-    }else if(count == 4){
-      PWMw_h = pwm_n;
+inline void fade(){
+  //block_flag = true;
+  int fadeAmount = 1;
+  newPWM = LEDpwm[mode];
+  while(stop_flag == false){
+    button1.tick();
+    analogWrite(LED[x], newPWM);
+    newPWM = newPWM + fadeAmount;
+    if (newPWM <= 0 || newPWM >= 255) {
+        fadeAmount = -fadeAmount;
     }
-  
+    delay(20);
+  }
+ //block_flag = false; 
 }
-  
+
 void batsave(){
-  PWMw_l = 10;
-    PWMr = 10;
+  for (int i = 0; i <= 3; i++){
+      LEDpwm[i] = 10;
+  }
     WDT_off();
 }
 
