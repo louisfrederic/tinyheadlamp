@@ -43,7 +43,7 @@ button1.attachClick(sleep);
 button1.attachLongPressStart(changeMode);
 button1.attachDoubleClick(settings);
     
-//WDT_on();
+WDT_on();
 }
 
 void loop(){
@@ -90,27 +90,26 @@ digitalWrite(LED[y], LOW);
 }
 
 void sleep(){                                     // This function will be called when the button1 was pressed 1 time
+for (int i = 0; i <= 1; i++){
+    digitalWrite(LED[i], LOW);
+}
+//prepare sleep
+WDT_off();
+GIFR |= bit(PCIF);                            // clear any outstanding interrupts
+GIMSK |= _BV(PCIE);                           // Enable Pin Change Interrupts
+PCMSK |= _BV(PCINT2);                         // Use PB2 as interrupt pin
+ADC_off();
+set_sleep_mode(SLEEP_MODE_PWR_DOWN);          // set sleepmode
 
-    for (int i = 0; i <= 1; i++){
-        digitalWrite(LED[i], LOW);
-    }
-    //prepare sleep
-    WDT_off();
-    GIFR |= bit(PCIF);                            // clear any outstanding interrupts
-    GIMSK |= _BV(PCIE);                           // Enable Pin Change Interrupts
-    PCMSK |= _BV(PCINT2);                         // Use PB2 as interrupt pin
-    ADC_off();
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);          // set sleepmode
+sleep_enable();                               // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
+sei();                                        // Enable interrupts for wakeup
+sleep_cpu();                                  // sleep
 
-    sleep_enable();                               // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
-    sei();                                        // Enable interrupts for wakeup
-    sleep_cpu();                                  // sleep
-
-    cli();                                        // Disable interrupts
-    PCMSK &= ~_BV(PCINT2);                        // Turn off PB2 as interrupt pin
-    sleep_disable();                              // Clear SE bit
-    WDT_on();                                     // turn the watchdog on
-    flag = 1;                                     //set flag, µc was in sleepmode before
+cli();                                        // Disable interrupts
+PCMSK &= ~_BV(PCINT2);                        // Turn off PB2 as interrupt pin
+sleep_disable();                              // Clear SE bit
+WDT_on();                                     // turn the watchdog on
+flag = 1;                                     //set flag, µc was in sleepmode before
 } 
 
 inline void changeMode(){                         // This function will be called once, during pressed for a long time.
