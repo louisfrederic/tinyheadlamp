@@ -8,11 +8,13 @@
 #define crit 2600                               // Battery Level critical, shut down
 
 int mode = 0;
-int const modenum = 4;
-int LED[2] = {1,4};
-int LEDpwm[modenum] = {10,20,50,100};
+int const modenum = 3;
+int LED[3] = {1,4,3};
+int LEDpwm[modenum] = {20,50,100};
+int set_array[2] = {0,0};
 int x = 0;
 int y = 0;
+int s = 0;
 int volatile newPWM;
 long Vcc;
 // Flags
@@ -40,8 +42,8 @@ for (int i = 0; i <= 1; i++){
 delay(1000);
 button1.attachClick(sleep);      
 //button1.attachClick(stop_dim);
-button1.attachLongPressStart(changeMode);
-button1.attachDoubleClick(settings);
+button1.attachLongPressStart(settings);
+button1.attachDoubleClick(changeMode);
     
 WDT_on();
 }
@@ -109,15 +111,15 @@ cli();                                        // Disable interrupts
 PCMSK &= ~_BV(PCINT2);                        // Turn off PB2 as interrupt pin
 sleep_disable();                              // Clear SE bit
 WDT_on();                                     // turn the watchdog on
-flag = 1;                                     //set flag, µc was in sleepmode before
+flag = true;                                     //set flag, µc was in sleepmode before
+delay(500);
 } 
 
 inline void changeMode(){                         // This function will be called once, during pressed for a long time.
  
     if (flag == true) {                           // when true lamp was in sleepmode befor, don't change mode because you are waking up rigth now
         flag = false;                             // resetset flag
-    }
-    //else if(block_flag == false){                 // check for regular mode change
+    }                 // check for regular mode change
       else{
         if (mode < modenum - 1) {
             mode++;                               // change mode
@@ -128,20 +130,55 @@ inline void changeMode(){                         // This function will be calle
     }
 }
 
-inline void settings(){                           // set the brightness
+ void settings(){                           // set the brightness
+    if(flag == false){
+  
    if(stop_flag == false){
       LEDpwm[mode] = newPWM;
       stop_flag = true;
    }else{
     stop_flag = false;
    }
+ }/*else if(WDR_flag == false){
+ button1.tick();                                   // keep watching the push buttons:
+ button1.attachClick(next_set);
+ uint8_t a = 0; 
+  switch(s){
+    case 0:
+        analogWrite(LED[0], 255);
+        _delay_ms(500);
+        digitalWrite(LED[0], LOW);
+        _delay_ms(250);
+        delay(2000);
+    break;
+    case 1:
+         while (a++<2) {                             //flash 5 times the red LED
+        digitalWrite(LED[2], HIGH);
+        _delay_ms(500);
+        digitalWrite(LED[2], LOW);
+        _delay_ms(500);
+        }
+        delay(2000);
+    break;
+  }
+ }*/
+}
+
+inline void next_set(){
+ 
+  if(s == 0){
+    s == 1;
+  }else{
+    s = 0;
+  }
+  return s;
 }
 
 inline void fade(){
   //block_flag = true;
   int fadeAmount = 1;
   newPWM = LEDpwm[mode];
-  while(stop_flag == false){
+  while(stop_flag == false && button1.isLongPressed()){
     button1.tick();
     analogWrite(LED[x], newPWM);
     newPWM = newPWM + fadeAmount;
